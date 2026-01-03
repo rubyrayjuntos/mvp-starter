@@ -5,5 +5,10 @@ import { InspectorAssistStack } from '../lib/mvp-stack';
 
 const app = new cdk.App();
 new InspectorAssistStack(app, 'InspectorAssistStack', {
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION || 'us-east-1' }
+  env: {
+    account: '631124976146',
+    region: process.env.CDK_DEFAULT_REGION || 'us-east-1'
+  },
+  budgetThreshold: 200,
+  alertEmail: process.env.ALERT_EMAIL || 'alerts@example.com',
 });

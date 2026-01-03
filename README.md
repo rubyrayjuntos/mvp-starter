@@ -1,14 +1,29 @@
-# InspectorAssist MVP - CDK Starter
+# InspectorAssist CDK
 
-Scaffold for the InspectorAssist AWS serverless MVP.
+This project contains the AWS CDK infrastructure for the InspectorAssist application.
 
-Contents:
-- CDK TypeScript stack skeleton (Cognito, S3, DynamoDB, Lambdas, API Gateway, Step Functions)
-- GitHub Actions workflows (OIDC deploy templates)
-- Prompt templates for Bedrock and test harness
-- Sample fetch script to download public inspection PDFs for prompt tuning
+## Local Development with LocalStack
 
-Notes:
-- You must provide an AWS account ID to create the OIDC trust role in your AWS account.
-- Default region: us-east-1
-- Default budget alert: $200/month
+To deploy the infrastructure to a local LocalStack container, you need to have Docker and LocalStack running.
+
+### Prerequisites
+
+*   Node.js and npm
+*   Docker
+*   LocalStack
+
+### Setup
+
+1.  Install the project dependencies:
+
+    ```bash
+    npm install
+    ```
+
+2.  Deploy the CDK stack to LocalStack:
+
+    ```bash
+    npm run deploy
+    ```
+
+This will create the necessary S3 buckets, DynamoDB tables, and other resources in your local environment.
