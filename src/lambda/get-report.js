@@ -1,14 +1,13 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
-
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const TABLE = process.env.REPORTS_TABLE!;
-
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.handler = void 0;
+const client_dynamodb_1 = require("@aws-sdk/client-dynamodb");
+const lib_dynamodb_1 = require("@aws-sdk/lib-dynamodb");
+const ddb = lib_dynamodb_1.DynamoDBDocumentClient.from(new client_dynamodb_1.DynamoDBClient({}));
+const TABLE = process.env.REPORTS_TABLE;
+const handler = async (event) => {
     try {
         const reportId = event.pathParameters?.id;
-
         if (!reportId) {
             return {
                 statusCode: 400,
@@ -21,17 +20,13 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 body: JSON.stringify({ error: 'Report ID is required' }),
             };
         }
-
-        const result = await ddb.send(
-            new GetCommand({
-                TableName: TABLE,
-                Key: {
-                    PK: `REPORT#${reportId}`,
-                    SK: 'METADATA',
-                },
-            })
-        );
-
+        const result = await ddb.send(new lib_dynamodb_1.GetCommand({
+            TableName: TABLE,
+            Key: {
+                PK: `REPORT#${reportId}`,
+                SK: 'METADATA',
+            },
+        }));
         if (!result.Item) {
             return {
                 statusCode: 404,
@@ -44,9 +39,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 body: JSON.stringify({ error: 'Report not found' }),
             };
         }
-
         const report = result.Item;
-
         return {
             statusCode: 200,
             headers: {
@@ -65,7 +58,8 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
                 negotiationStyle: report.negotiationStyle || null,
             }),
         };
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Get report error:', error);
         return {
             statusCode: 500,
@@ -79,3 +73,4 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         };
     }
 };
+exports.handler = handler;

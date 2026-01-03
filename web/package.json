@@ -1,0 +1,20 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.962.0",
+    "@aws-sdk/client-s3": "^3.962.0",
+    "@aws-sdk/s3-request-presigner": "^3.962.0"
+  }
+}
