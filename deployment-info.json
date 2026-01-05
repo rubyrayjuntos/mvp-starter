@@ -1,0 +1,9 @@
+{
+  "apiUrl": "https://p3dy1qpbja.execute-api.us-east-1.amazonaws.com/prod/",
+  "uploadsBucket": "inspectorassiststack-uploadsbucket5e5e9b64-ts9gsfjb1zyk",
+  "reportsTable": "InspectorAssistStack-ReportsTable282F2283-MH2879UVD2SJ",
+  "userPoolId": "us-east-1_AtZZVRIjO",
+  "userPoolClientId": "4o9paj64knm94ctrqclc38a5ke",
+  "alertsTopicArn": "arn:aws:sns:us-east-1:631124976146:InspectorAssistStack-AlertsTopic3414BE91-I2NS0mc35B0t",
+  "dashboardUrl": "https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=InspectorAssist-Operations"
+}

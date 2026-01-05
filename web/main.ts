@@ -34,16 +34,37 @@ loginForm.onsubmit = async (e) => {
     const password = (document.getElementById('password') as HTMLInputElement).value;
 
     try {
-        const response = await cognito.send(new InitiateAuthCommand({
-            AuthFlow: 'USER_PASSWORD_AUTH',
-            ClientId: CONFIG.CLIENT_ID,
-            AuthParameters: {
-                USERNAME: email,
-                PASSWORD: password
-            }
-        }));
+        const response = await fetch(`${CONFIG.API_URL.replace('/v1', '')}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: email, password })
+        }).catch(async () => {
+            // Fallback to direct Cognito call with ADMIN_NO_SRP_AUTH
+            const authResponse = await fetch('https://cognito-idp.us-east-1.amazonaws.com/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-amz-json-1.1',
+                    'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'
+                },
+                body: JSON.stringify({
+                    AuthFlow: 'USER_PASSWORD_AUTH',
+                    ClientId: CONFIG.CLIENT_ID,
+                    AuthParameters: {
+                        USERNAME: email,
+                        PASSWORD: password
+                    }
+                })
+            });
+            return authResponse;
+        });
 
-        idToken = response.AuthenticationResult?.IdToken!;
+        const data = await response.json();
+        idToken = data.AuthenticationResult?.IdToken || data.IdToken;
+        
+        if (!idToken) {
+            throw new Error('No token received');
+        }
+
         authOverlay.style.display = 'none';
         mainContent.style.display = 'block';
     } catch (err) {
@@ -68,7 +89,7 @@ fileInput.onchange = async () => {
         const uploadResponse = await fetch(`${CONFIG.API_URL}/reports/upload`, {
             method: 'POST',
             headers: {
-                'Authorization': idToken,
+                'Authorization': `Bearer ${idToken}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ filename: file.name })
@@ -115,7 +136,7 @@ async function pollStatus(reportId: string) {
 
         try {
             const response = await fetch(`${CONFIG.API_URL}/reports/${reportId}`, {
-                headers: { 'Authorization': idToken }
+                headers: { 'Authorization': `Bearer ${idToken}` }
             });
             const report = await response.json();
 
@@ -165,7 +186,7 @@ async function generateNegotiationPlan(reportId: string) {
         const response = await fetch(`${CONFIG.API_URL}/reports/${reportId}/plan`, {
             method: 'POST',
             headers: {
-                'Authorization': idToken,
+                'Authorization': `Bearer ${idToken}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({

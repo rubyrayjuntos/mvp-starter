@@ -18,7 +18,7 @@
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::631124976146:role/cdk-hnb659fds-deploy-role-631124976146-us-east-1",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::631124976146:role/cdk-hnb659fds-cfn-exec-role-631124976146-us-east-1",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-631124976146-us-east-1/5b912c171e94fb9b5ead7fa81023db25ec6c65c8bed6455b1db171245387cfbe.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-631124976146-us-east-1/2614218749fbb5b37393c8df96296d0f4b591d6a22a1ffc452ecde2eeebe8f73.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -226,6 +226,18 @@
             "data": "ExtractIssuesHandlerTextractNotificationTopic57715ADA"
           }
         ],
+        "/InspectorAssistStack/ExtractIssuesDLQ/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractIssuesDLQ45F756E4"
+          }
+        ],
+        "/InspectorAssistStack/ExtractIssuesDLQ/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractIssuesDLQPolicyCD8B7EFC"
+          }
+        ],
         "/InspectorAssistStack/NegotiationPlanHandler/ServiceRole/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -295,7 +307,7 @@
         "/InspectorAssistStack/ApiGateway/Deployment/Resource": [
           {
             "type": "aws:cdk:logicalId",
-            "data": "ApiGatewayDeploymentA26796E8b9c8e6a8bbefc41c405d314b2ef84f3f"
+            "data": "ApiGatewayDeploymentA26796E890585a341e126bad565096e0053e5adc"
           }
         ],
         "/InspectorAssistStack/ApiGateway/DeploymentStage.prod/Resource": [
@@ -460,6 +472,30 @@
             "data": "GetReportErrorAlarm71DFD4B1"
           }
         ],
+        "/InspectorAssistStack/ExtractIssuesDLQAlarm/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExtractIssuesDLQAlarm804AD37F"
+          }
+        ],
+        "/InspectorAssistStack/HighLatencyAlarm/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "HighLatencyAlarm61213652"
+          }
+        ],
+        "/InspectorAssistStack/LowProcessingVolumeAlarm/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LowProcessingVolumeAlarm2B44262E"
+          }
+        ],
+        "/InspectorAssistStack/InspectorAssistDashboard/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "InspectorAssistDashboard16D9E544"
+          }
+        ],
         "/InspectorAssistStack/MonthlyBudget": [
           {
             "type": "aws:cdk:logicalId",
@@ -500,6 +536,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "AlertsTopicArn"
+          }
+        ],
+        "/InspectorAssistStack/DashboardUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DashboardUrl"
           }
         ],
         "/InspectorAssistStack/CDKMetadata/Default": [

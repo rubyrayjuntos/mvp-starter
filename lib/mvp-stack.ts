@@ -36,7 +36,7 @@ export class InspectorAssistStack extends cdk.Stack {
 
     const budgetThreshold = props?.budgetThreshold || 200;
     const alertEmail = props?.alertEmail || 'alerts@example.com';
-    const allowedOrigins = props?.allowedOrigins || ['http://localhost:3000', 'https://localhost:3000'];
+    const allowedOrigins = props?.allowedOrigins || ['http://localhost:3000', 'https://localhost:3000', 'http://localhost:5173', 'https://localhost:5173'];
     const enableVpc = props?.enableVpc || false;
     const enableCloudFront = props?.enableCloudFront || false;
     const enableDynamoDbAutoScaling = props?.enableDynamoDbAutoScaling || false;
@@ -248,6 +248,7 @@ export class InspectorAssistStack extends cdk.Stack {
       authFlows: {
         userPassword: true,
         userSrp: true,
+        adminUserPassword: true, // Enable ADMIN_NO_SRP_AUTH for testing
       },
       oAuth: {
         flows: { authorizationCodeGrant: true },
@@ -329,7 +330,7 @@ export class InspectorAssistStack extends cdk.Stack {
       reservedConcurrentExecutions: 10,
       environment: {
         REPORTS_TABLE: reportsTable.tableName,
-        BEDROCK_MODEL_ID: 'amazon.titan-text-express-v1',
+        BEDROCK_MODEL_ID: 'anthropic.claude-3-haiku-20240307-v1:0',
       },
       bundling: {
         commandHooks: {
@@ -394,7 +395,7 @@ export class InspectorAssistStack extends cdk.Stack {
       memorySize: 512,
       environment: {
         REPORTS_TABLE: reportsTable.tableName,
-        BEDROCK_MODEL_ID: 'amazon.titan-text-express-v1',
+        BEDROCK_MODEL_ID: 'anthropic.claude-3-haiku-20240307-v1:0',
       },
       bundling: {
         commandHooks: {
@@ -455,6 +456,8 @@ export class InspectorAssistStack extends cdk.Stack {
       defaultCorsPreflightOptions: {
         allowOrigins: allowedOrigins,
         allowMethods: apigateway.Cors.ALL_METHODS,
+        allowHeaders: ['Content-Type', 'X-Amz-Date', 'Authorization', 'X-Api-Key', 'X-Amz-Security-Token'],
+        allowCredentials: false,
       },
     });
 

@@ -41,9 +41,45 @@
         "POST"
        ],
        "AllowedOrigins": [
-        "*"
+        "http://localhost:3000",
+        "https://localhost:3000",
+        "http://localhost:5173",
+        "https://localhost:5173"
        ],
        "MaxAge": 3000
+      }
+     ]
+    },
+    "LifecycleConfiguration": {
+     "Rules": [
+      {
+       "ExpirationInDays": 365,
+       "Id": "OptimizeStorage",
+       "Prefix": "uploads/",
+       "Status": "Enabled",
+       "Transitions": [
+        {
+         "StorageClass": "STANDARD_IA",
+         "TransitionInDays": 30
+        },
+        {
+         "StorageClass": "GLACIER",
+         "TransitionInDays": 90
+        }
+       ]
+      },
+      {
+       "ExpirationInDays": 30,
+       "Id": "CleanupTextractOutput",
+       "Prefix": "textract-output/",
+       "Status": "Enabled"
+      },
+      {
+       "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+       },
+       "Id": "CleanupIncompleteUploads",
+       "Status": "Enabled"
       }
      ]
     },
@@ -303,6 +339,7 @@
     ],
     "ExplicitAuthFlows": [
      "ALLOW_USER_PASSWORD_AUTH",
+     "ALLOW_ADMIN_USER_PASSWORD_AUTH",
      "ALLOW_USER_SRP_AUTH",
      "ALLOW_REFRESH_TOKEN_AUTH"
     ],
@@ -984,14 +1021,27 @@
        }
       },
       {
-       "Action": "textract:GetDocumentTextDetection",
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "InspectorAssist/Business"
+        }
+       },
        "Effect": "Allow",
        "Resource": "*"
       },
       {
+       "Action": "textract:GetDocumentTextDetection",
+       "Effect": "Allow",
+       "Resource": "arn:aws:textract:us-east-1:631124976146:*"
+      },
+      {
        "Action": "bedrock:InvokeModel",
        "Effect": "Allow",
-       "Resource": "*"
+       "Resource": [
+        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1",
+        "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+       ]
       }
      ],
      "Version": "2012-10-17"
@@ -1012,18 +1062,19 @@
    "Properties": {
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-631124976146-us-east-1",
-     "S3Key": "acb83715c60b440b92b205a7d284bc9d1a3f0565200127970942f08017a87c35.zip"
+     "S3Key": "a4ac1f7b1932443ef0ad66b32ee7d66d3f3e97d17897268ef2b0b2399260711c.zip"
     },
     "Environment": {
      "Variables": {
       "REPORTS_TABLE": {
        "Ref": "ReportsTable282F2283"
       },
-      "BEDROCK_MODEL_ID": "amazon.titan-text-express-v1"
+      "BEDROCK_MODEL_ID": "anthropic.claude-3-haiku-20240307-v1:0"
      }
     },
     "Handler": "index.handler",
     "MemorySize": 512,
+    "ReservedConcurrentExecutions": 10,
     "Role": {
      "Fn::GetAtt": [
       "ExtractIssuesHandlerServiceRoleBA14E729",
@@ -1042,7 +1093,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "InspectorAssistStack/ExtractIssuesHandler/Resource",
-    "aws:asset:path": "asset.acb83715c60b440b92b205a7d284bc9d1a3f0565200127970942f08017a87c35",
+    "aws:asset:path": "asset.a4ac1f7b1932443ef0ad66b32ee7d66d3f3e97d17897268ef2b0b2399260711c",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -1102,12 +1153,70 @@
      ]
     },
     "Protocol": "lambda",
+    "RedrivePolicy": {
+     "deadLetterTargetArn": {
+      "Fn::GetAtt": [
+       "ExtractIssuesDLQ45F756E4",
+       "Arn"
+      ]
+     }
+    },
     "TopicArn": {
      "Ref": "TextractNotificationTopic2CD29DAB"
     }
    },
    "Metadata": {
     "aws:cdk:path": "InspectorAssistStack/ExtractIssuesHandler/TextractNotificationTopic/Resource"
+   }
+  },
+  "ExtractIssuesDLQ45F756E4": {
+   "Type": "AWS::SQS::Queue",
+   "Properties": {
+    "KmsMasterKeyId": "alias/aws/sqs",
+    "MessageRetentionPeriod": 1209600
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/ExtractIssuesDLQ/Resource"
+   }
+  },
+  "ExtractIssuesDLQPolicyCD8B7EFC": {
+   "Type": "AWS::SQS::QueuePolicy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sqs:SendMessage",
+       "Condition": {
+        "ArnEquals": {
+         "aws:SourceArn": {
+          "Ref": "TextractNotificationTopic2CD29DAB"
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "sns.amazonaws.com"
+       },
+       "Resource": {
+        "Fn::GetAtt": [
+         "ExtractIssuesDLQ45F756E4",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Queues": [
+     {
+      "Ref": "ExtractIssuesDLQ45F756E4"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/ExtractIssuesDLQ/Policy/Resource"
    }
   },
   "NegotiationPlanHandlerServiceRole4571723D": {
@@ -1192,6 +1301,16 @@
        }
       },
       {
+       "Action": "cloudwatch:PutMetricData",
+       "Condition": {
+        "StringEquals": {
+         "cloudwatch:namespace": "InspectorAssist/Business"
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
        "Action": "bedrock:InvokeModel",
        "Effect": "Allow",
        "Resource": "*"
@@ -1215,14 +1334,14 @@
    "Properties": {
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-631124976146-us-east-1",
-     "S3Key": "6fe3cbe8429a9f258e893166c61bf2d4ab8170613e2adf493e1aa273f7ebd00c.zip"
+     "S3Key": "baabbfe64388fe2e39747981c2a4f59b8224849d69791bd02c540472553f36cc.zip"
     },
     "Environment": {
      "Variables": {
       "REPORTS_TABLE": {
        "Ref": "ReportsTable282F2283"
       },
-      "BEDROCK_MODEL_ID": "amazon.titan-text-express-v1"
+      "BEDROCK_MODEL_ID": "anthropic.claude-3-haiku-20240307-v1:0"
      }
     },
     "Handler": "index.handler",
@@ -1245,7 +1364,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "InspectorAssistStack/NegotiationPlanHandler/Resource",
-    "aws:asset:path": "asset.6fe3cbe8429a9f258e893166c61bf2d4ab8170613e2adf493e1aa273f7ebd00c",
+    "aws:asset:path": "asset.baabbfe64388fe2e39747981c2a4f59b8224849d69791bd02c540472553f36cc",
     "aws:asset:is-bundled": true,
     "aws:asset:property": "Code"
    }
@@ -1496,7 +1615,7 @@
     "aws:cdk:path": "InspectorAssistStack/ApiGateway/Account"
    }
   },
-  "ApiGatewayDeploymentA26796E8b9c8e6a8bbefc41c405d314b2ef84f3f": {
+  "ApiGatewayDeploymentA26796E890585a341e126bad565096e0053e5adc": {
    "Type": "AWS::ApiGateway::Deployment",
    "Properties": {
     "Description": "Automatically created by the RestApi construct",
@@ -1529,7 +1648,7 @@
    "Type": "AWS::ApiGateway::Stage",
    "Properties": {
     "DeploymentId": {
-     "Ref": "ApiGatewayDeploymentA26796E8b9c8e6a8bbefc41c405d314b2ef84f3f"
+     "Ref": "ApiGatewayDeploymentA26796E890585a341e126bad565096e0053e5adc"
     },
     "MethodSettings": [
      {
@@ -1562,9 +1681,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -1579,6 +1702,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -1626,9 +1750,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -1643,6 +1771,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -1684,9 +1813,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -1701,6 +1834,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -1742,9 +1876,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -1759,6 +1897,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -1910,9 +2049,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -1927,6 +2070,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -2078,9 +2222,13 @@
      "IntegrationResponses": [
       {
        "ResponseParameters": {
-        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+        "method.response.header.Access-Control-Allow-Origin": "'http://localhost:3000'",
+        "method.response.header.Vary": "'Origin'",
         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "ResponseTemplates": {
+        "application/json": "#set($origin = $input.params().header.get(\"Origin\"))\n#if($origin == \"\")\n  #set($origin = $input.params().header.get(\"origin\"))\n#end\n#if($origin == \"https://localhost:3000\" || $origin == \"http://localhost:5173\" || $origin == \"https://localhost:5173\")\n  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)\n#end"
        },
        "StatusCode": "204"
       }
@@ -2095,6 +2243,7 @@
       "ResponseParameters": {
        "method.response.header.Access-Control-Allow-Headers": true,
        "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Vary": true,
        "method.response.header.Access-Control-Allow-Methods": true
       },
       "StatusCode": "204"
@@ -2371,6 +2520,219 @@
     "aws:cdk:path": "InspectorAssistStack/GetReportErrorAlarm/Resource"
    }
   },
+  "ExtractIssuesDLQAlarm804AD37F": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmActions": [
+     {
+      "Ref": "AlertsTopic3414BE91"
+     }
+    ],
+    "AlarmDescription": "Messages in Extract Issues DLQ",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "Dimensions": [
+     {
+      "Name": "QueueName",
+      "Value": {
+       "Fn::GetAtt": [
+        "ExtractIssuesDLQ45F756E4",
+        "QueueName"
+       ]
+      }
+     }
+    ],
+    "EvaluationPeriods": 1,
+    "MetricName": "ApproximateNumberOfMessagesVisible",
+    "Namespace": "AWS/SQS",
+    "Period": 300,
+    "Statistic": "Maximum",
+    "Threshold": 1,
+    "TreatMissingData": "notBreaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/ExtractIssuesDLQAlarm/Resource"
+   }
+  },
+  "HighLatencyAlarm61213652": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmActions": [
+     {
+      "Ref": "AlertsTopic3414BE91"
+     }
+    ],
+    "AlarmDescription": "High average Lambda duration",
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 2,
+    "Metrics": [
+     {
+      "Expression": "AVG([m1, m2, m3])",
+      "Id": "expr_1",
+      "ReturnData": true
+     },
+     {
+      "Id": "m1",
+      "MetricStat": {
+       "Metric": {
+        "Dimensions": [
+         {
+          "Name": "FunctionName",
+          "Value": {
+           "Ref": "ExtractIssuesHandler1B259276"
+          }
+         }
+        ],
+        "MetricName": "Duration",
+        "Namespace": "AWS/Lambda"
+       },
+       "Period": 300,
+       "Stat": "Average"
+      },
+      "ReturnData": false
+     },
+     {
+      "Id": "m2",
+      "MetricStat": {
+       "Metric": {
+        "Dimensions": [
+         {
+          "Name": "FunctionName",
+          "Value": {
+           "Ref": "NegotiationPlanHandler2B43FA7D"
+          }
+         }
+        ],
+        "MetricName": "Duration",
+        "Namespace": "AWS/Lambda"
+       },
+       "Period": 300,
+       "Stat": "Average"
+      },
+      "ReturnData": false
+     },
+     {
+      "Id": "m3",
+      "MetricStat": {
+       "Metric": {
+        "Dimensions": [
+         {
+          "Name": "FunctionName",
+          "Value": {
+           "Ref": "GetReportHandler237F2737"
+          }
+         }
+        ],
+        "MetricName": "Duration",
+        "Namespace": "AWS/Lambda"
+       },
+       "Period": 300,
+       "Stat": "Average"
+      },
+      "ReturnData": false
+     }
+    ],
+    "Threshold": 30000,
+    "TreatMissingData": "notBreaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/HighLatencyAlarm/Resource"
+   }
+  },
+  "LowProcessingVolumeAlarm2B44262E": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "AlarmActions": [
+     {
+      "Ref": "AlertsTopic3414BE91"
+     }
+    ],
+    "AlarmDescription": "No documents processed in 4 hours",
+    "ComparisonOperator": "LessThanThreshold",
+    "EvaluationPeriods": 4,
+    "MetricName": "DocumentsProcessed",
+    "Namespace": "InspectorAssist/Business",
+    "Period": 3600,
+    "Statistic": "Sum",
+    "Threshold": 1,
+    "TreatMissingData": "breaching"
+   },
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/LowProcessingVolumeAlarm/Resource"
+   }
+  },
+  "InspectorAssistDashboard16D9E544": {
+   "Type": "AWS::CloudWatch::Dashboard",
+   "Properties": {
+    "DashboardBody": {
+     "Fn::Join": [
+      "",
+      [
+       "{\"widgets\":[{\"type\":\"metric\",\"width\":12,\"height\":6,\"x\":0,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Documents Processed\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"InspectorAssist/Business\",\"DocumentsProcessed\",{\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":12,\"height\":6,\"x\":12,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Processing Performance\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"InspectorAssist/Business\",\"ProcessingTime\"],[\"InspectorAssist/Business\",\"IssuesExtracted\",{\"yAxis\":\"right\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":12,\"height\":6,\"x\":0,\"y\":6,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Lambda Errors\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"",
+       {
+        "Ref": "UploadHandler4CB020C5"
+       },
+       "\",{\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"",
+       {
+        "Ref": "TextractHandler0115586A"
+       },
+       "\",{\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"",
+       {
+        "Ref": "ExtractIssuesHandler1B259276"
+       },
+       "\",{\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"",
+       {
+        "Ref": "NegotiationPlanHandler2B43FA7D"
+       },
+       "\",{\"stat\":\"Sum\"}],[\"AWS/Lambda\",\"Errors\",\"FunctionName\",\"",
+       {
+        "Ref": "GetReportHandler237F2737"
+       },
+       "\",{\"stat\":\"Sum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":12,\"height\":6,\"x\":12,\"y\":6,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Lambda Duration\",\"region\":\"",
+       {
+        "Ref": "AWS::Region"
+       },
+       "\",\"metrics\":[[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"",
+       {
+        "Ref": "UploadHandler4CB020C5"
+       },
+       "\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"",
+       {
+        "Ref": "TextractHandler0115586A"
+       },
+       "\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"",
+       {
+        "Ref": "ExtractIssuesHandler1B259276"
+       },
+       "\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"",
+       {
+        "Ref": "NegotiationPlanHandler2B43FA7D"
+       },
+       "\"],[\"AWS/Lambda\",\"Duration\",\"FunctionName\",\"",
+       {
+        "Ref": "GetReportHandler237F2737"
+       },
+       "\"]],\"yAxis\":{}}}]}"
+      ]
+     ]
+    },
+    "DashboardName": "InspectorAssist-Operations"
+   },
+   "Metadata": {
+    "aws:cdk:path": "InspectorAssistStack/InspectorAssistDashboard/Resource"
+   }
+  },
   "MonthlyBudget": {
    "Type": "AWS::Budgets::Budget",
    "Properties": {
@@ -2409,7 +2771,7 @@
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/02RTXPjIAyGf0vvRO0ml7266expPzJO95zBWHVIMPJYYjMp4/++A9iNT3peSaAXsYXtbgcvT/rGG9NeN842EI+izVXpG58ie4b4ToM1av/hCxxDw2a0g1jyKbvWk+IdxNdgriipNlMJB3LW3B/pWRfxqhkn5XTftBri/sMfcOwt8zzkR/CmDGjvXvfUNhDfdeMw+0owKUOdt0IQ/zKOByKXal+8wN5Z9LIulcyk9GA7LXjTd4j7ctfSwlWQM432E8d0cqVqZKkGm7IrrIyh4EW94eDo3s8DV+oousveC9TIFEaDaQvqF8qZ2lScaanOQzJPyuoeYk1lBTk+Flxo2efJU4sXht85LKtUvDtpZhSGKgXlqGP4SV2Ngj53GEehvWkxZ4iV02Of35ZgUk1ou3Q2f2fCaW3v4TnfnV5pfZc6/gQZgkwqeYILP//bbuHbd3h5urC1mzF4sT1CXeJ/TeDx66ACAAA="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/02SwXKjMAyGn6V3R82QJ6Dp7KndzZLuOWOMSpwYi0X2ZlKP333HNjRc0PdLAkn/UEG128H2Sd54o7rrxugWwtFJdRXyxqfAliF80KiV2H/aAkffspr06DTZlF3rKHgH4cWrK7pUm6mEAxmt7o/0rIt4kYxRGDm0nYSw/7QHnAbNPA/54a0qA7q7lQN1LYQP2RrMeyWIQlFvtSMIfxinA5FJtW9eYG80WrculUwUctS9dHiTdwj78q2lhWvvzjTpL5zSmyvVILt61Cm7wlop8taJVxwN3Yd54Eodnezz7gUaZPKTwuSCeEd3pi4VZ1qq85DMUWg5QGioWJDjw+BCi58nSx1eGH7msFgpeHeSzOgY6hSEoZ7hjfoGHdrS8Zch/Pbo84wC+fmYtJJRKEO+u0mnzhBqI6che5HhVfK5JTnlu75FFK3v+rRC/isSxvWVj9PzisksbfvU8cu70bso0mlw4ed/VQXVFrZPF9Z6M3nr9IDQlPgfNefHfOcCAAA="
    },
    "Metadata": {
     "aws:cdk:path": "InspectorAssistStack/CDKMetadata/Default"
@@ -2484,6 +2846,20 @@
   "AlertsTopicArn": {
    "Value": {
     "Ref": "AlertsTopic3414BE91"
+   }
+  },
+  "DashboardUrl": {
+   "Description": "CloudWatch Dashboard URL",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=",
+      {
+       "Ref": "InspectorAssistDashboard16D9E544"
+      }
+     ]
+    ]
    }
   }
  },
