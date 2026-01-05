@@ -4,10 +4,14 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ISSUE_EXTRACTION_PROMPT } from './prompts';
+import { CircuitBreaker } from './utils/circuit-breaker';
+import { BusinessMetrics } from './utils/business-metrics';
+import { RetryHandler } from './utils/retry-handler';
 
 const textract = new TextractClient({});
 const bedrock = new BedrockRuntimeClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const bedrockCircuitBreaker = new CircuitBreaker(3, 30000); // 3 failures, 30s recovery
 
 const TABLE = process.env.REPORTS_TABLE!;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0';
@@ -37,6 +41,8 @@ export const handler: SNSHandler = async (event) => {
         }
 
         try {
+            const startTime = Date.now();
+            
             // 1. Get report metadata from DynamoDB to find the reportId
             // In a real app, you might use a GSI to find by textractJobId, 
             // but for MVP we use the JobId to fetch from Textract which gives us the S3 Bucket/Key.
@@ -53,10 +59,12 @@ export const handler: SNSHandler = async (event) => {
             let nextToken: string | undefined;
 
             do {
-                const textractResults = await textract.send(new GetDocumentTextDetectionCommand({
-                    JobId: jobId,
-                    NextToken: nextToken
-                }));
+                const textractResults = await RetryHandler.withExponentialBackoff(async () => {
+                    return await textract.send(new GetDocumentTextDetectionCommand({
+                        JobId: jobId,
+                        NextToken: nextToken
+                    }));
+                });
 
                 const pageText = textractResults.Blocks?.filter(b => b.BlockType === 'LINE').map(b => b.Text).join('\n') || '';
                 allText += pageText + '\n';
@@ -84,12 +92,14 @@ export const handler: SNSHandler = async (event) => {
                 messages: [{ role: 'user', content: prompt }],
             };
 
-            const bedrockResponse = await bedrock.send(new InvokeModelCommand({
-                modelId: MODEL_ID,
-                contentType: 'application/json',
-                accept: 'application/json',
-                body: JSON.stringify(payload),
-            }));
+            const bedrockResponse = await bedrockCircuitBreaker.execute(async () => {
+                return await bedrock.send(new InvokeModelCommand({
+                    modelId: MODEL_ID,
+                    contentType: 'application/json',
+                    accept: 'application/json',
+                    body: JSON.stringify(payload),
+                }));
+            });
 
             const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
             const extractedContent = isTitan ? responseBody.results[0].outputText : responseBody.content[0].text;
@@ -120,8 +130,13 @@ export const handler: SNSHandler = async (event) => {
 
             console.log(`Report ${reportId} processed successfully with ${issues.length} issues.`);
 
+            // Record business metrics
+            const processingTime = Date.now() - startTime;
+            await BusinessMetrics.recordDocumentProcessed(processingTime, issues.length);
+
         } catch (error) {
             console.error('Error in ExtractIssuesHandler:', error);
+            await BusinessMetrics.recordError('PROCESSING_ERROR');
         }
     }
 };

@@ -3,9 +3,12 @@ import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedroc
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { NEGOTIATION_PLAN_PROMPT } from './prompts';
+import { CircuitBreaker } from './utils/circuit-breaker';
+import { BusinessMetrics } from './utils/business-metrics';
 
 const bedrock = new BedrockRuntimeClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const bedrockCircuitBreaker = new CircuitBreaker(3, 30000);
 const TABLE = process.env.REPORTS_TABLE!;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0';
 
@@ -84,12 +87,14 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             messages: [{ role: 'user', content: prompt }],
         };
 
-        const bedrockResponse = await bedrock.send(new InvokeModelCommand({
-            modelId: MODEL_ID,
-            contentType: 'application/json',
-            accept: 'application/json',
-            body: JSON.stringify(payload),
-        }));
+        const bedrockResponse = await bedrockCircuitBreaker.execute(async () => {
+            return await bedrock.send(new InvokeModelCommand({
+                modelId: MODEL_ID,
+                contentType: 'application/json',
+                accept: 'application/json',
+                body: JSON.stringify(payload),
+            }));
+        });
 
         const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
         const plan = isTitan ? responseBody.results[0].outputText : responseBody.content[0].text;
@@ -104,6 +109,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
                 updatedAt: new Date().toISOString()
             }
         }));
+
+        // Record business metrics
+        await BusinessMetrics.recordNegotiationPlanGenerated(plan.length);
 
         return {
             statusCode: 200,

@@ -5,8 +5,11 @@ const client_bedrock_runtime_1 = require("@aws-sdk/client-bedrock-runtime");
 const client_dynamodb_1 = require("@aws-sdk/client-dynamodb");
 const lib_dynamodb_1 = require("@aws-sdk/lib-dynamodb");
 const prompts_1 = require("./prompts");
+const circuit_breaker_1 = require("./utils/circuit-breaker");
+const business_metrics_1 = require("./utils/business-metrics");
 const bedrock = new client_bedrock_runtime_1.BedrockRuntimeClient({});
 const ddb = lib_dynamodb_1.DynamoDBDocumentClient.from(new client_dynamodb_1.DynamoDBClient({}));
+const bedrockCircuitBreaker = new circuit_breaker_1.CircuitBreaker(3, 30000);
 const TABLE = process.env.REPORTS_TABLE;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0';
 const promptTemplate = prompts_1.NEGOTIATION_PLAN_PROMPT;
@@ -75,12 +78,14 @@ const handler = async (event) => {
             max_tokens: 2000,
             messages: [{ role: 'user', content: prompt }],
         };
-        const bedrockResponse = await bedrock.send(new client_bedrock_runtime_1.InvokeModelCommand({
-            modelId: MODEL_ID,
-            contentType: 'application/json',
-            accept: 'application/json',
-            body: JSON.stringify(payload),
-        }));
+        const bedrockResponse = await bedrockCircuitBreaker.execute(async () => {
+            return await bedrock.send(new client_bedrock_runtime_1.InvokeModelCommand({
+                modelId: MODEL_ID,
+                contentType: 'application/json',
+                accept: 'application/json',
+                body: JSON.stringify(payload),
+            }));
+        });
         const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
         const plan = isTitan ? responseBody.results[0].outputText : responseBody.content[0].text;
         // Save plan to DynamoDB
@@ -93,6 +98,8 @@ const handler = async (event) => {
                 updatedAt: new Date().toISOString()
             }
         }));
+        // Record business metrics
+        await business_metrics_1.BusinessMetrics.recordNegotiationPlanGenerated(plan.length);
         return {
             statusCode: 200,
             headers: {

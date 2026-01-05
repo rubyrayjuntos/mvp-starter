@@ -6,9 +6,13 @@ const client_bedrock_runtime_1 = require("@aws-sdk/client-bedrock-runtime");
 const client_dynamodb_1 = require("@aws-sdk/client-dynamodb");
 const lib_dynamodb_1 = require("@aws-sdk/lib-dynamodb");
 const prompts_1 = require("./prompts");
+const circuit_breaker_1 = require("./utils/circuit-breaker");
+const business_metrics_1 = require("./utils/business-metrics");
+const retry_handler_1 = require("./utils/retry-handler");
 const textract = new client_textract_1.TextractClient({});
 const bedrock = new client_bedrock_runtime_1.BedrockRuntimeClient({});
 const ddb = lib_dynamodb_1.DynamoDBDocumentClient.from(new client_dynamodb_1.DynamoDBClient({}));
+const bedrockCircuitBreaker = new circuit_breaker_1.CircuitBreaker(3, 30000); // 3 failures, 30s recovery
 const TABLE = process.env.REPORTS_TABLE;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0';
 const promptTemplate = prompts_1.ISSUE_EXTRACTION_PROMPT;
@@ -33,6 +37,7 @@ const handler = async (event) => {
             continue;
         }
         try {
+            const startTime = Date.now();
             // 1. Get report metadata from DynamoDB to find the reportId
             // In a real app, you might use a GSI to find by textractJobId, 
             // but for MVP we use the JobId to fetch from Textract which gives us the S3 Bucket/Key.
@@ -45,10 +50,12 @@ const handler = async (event) => {
             let allText = '';
             let nextToken;
             do {
-                const textractResults = await textract.send(new client_textract_1.GetDocumentTextDetectionCommand({
-                    JobId: jobId,
-                    NextToken: nextToken
-                }));
+                const textractResults = await retry_handler_1.RetryHandler.withExponentialBackoff(async () => {
+                    return await textract.send(new client_textract_1.GetDocumentTextDetectionCommand({
+                        JobId: jobId,
+                        NextToken: nextToken
+                    }));
+                });
                 const pageText = textractResults.Blocks?.filter(b => b.BlockType === 'LINE').map(b => b.Text).join('\n') || '';
                 allText += pageText + '\n';
                 nextToken = textractResults.NextToken;
@@ -72,12 +79,14 @@ const handler = async (event) => {
                 max_tokens: 4000,
                 messages: [{ role: 'user', content: prompt }],
             };
-            const bedrockResponse = await bedrock.send(new client_bedrock_runtime_1.InvokeModelCommand({
-                modelId: MODEL_ID,
-                contentType: 'application/json',
-                accept: 'application/json',
-                body: JSON.stringify(payload),
-            }));
+            const bedrockResponse = await bedrockCircuitBreaker.execute(async () => {
+                return await bedrock.send(new client_bedrock_runtime_1.InvokeModelCommand({
+                    modelId: MODEL_ID,
+                    contentType: 'application/json',
+                    accept: 'application/json',
+                    body: JSON.stringify(payload),
+                }));
+            });
             const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
             const extractedContent = isTitan ? responseBody.results[0].outputText : responseBody.content[0].text;
             // Parse the JSON array from the response
@@ -104,9 +113,13 @@ const handler = async (event) => {
                 }
             }));
             console.log(`Report ${reportId} processed successfully with ${issues.length} issues.`);
+            // Record business metrics
+            const processingTime = Date.now() - startTime;
+            await business_metrics_1.BusinessMetrics.recordDocumentProcessed(processingTime, issues.length);
         }
         catch (error) {
             console.error('Error in ExtractIssuesHandler:', error);
+            await business_metrics_1.BusinessMetrics.recordError('PROCESSING_ERROR');
         }
     }
 };
