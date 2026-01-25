@@ -1,0 +1,11 @@
+{
+	"servers": {
+		"zapier/zapier-mcp": {
+			"type": "http",
+			"url": "{zapier_mcp_url}",
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.0.0"
+		}
+	},
+	"inputs": []
+}
